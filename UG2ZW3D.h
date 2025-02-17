@@ -14,6 +14,8 @@
 一人写一个，500人就写500个，更好
 */
 
+
+#define _USE_MATH_DEFINES
 #include <windows.h>
 #include <fstream>
 #include <list>
@@ -37,6 +39,8 @@
 #include <algorithm> 
 #include <cmath> //C++
 #include <math.h> //C语言
+#include <iostream>
+#include <cmath>
 //fabs()计算绝对值
 //sqrt() 计算平方根
 //cbrt()计算立方根
@@ -44,10 +48,58 @@
 //ceil() 向上取整
 //floor() 向下取整
 using namespace std;
+
+//#include "uf_object_types.h"
+#include "D:\\ZWAPI\\uf_object_types.h"
 #include "api/inc/VxApi.h"
 
-static double PI = 3.1415926535897932384626433832795;
- typedef unsigned int tag_t;
+//static double PI = 3.1415926535897932384626433832795;
+#ifndef TAG_T_DEFINED
+#define TAG_T_DEFINED
+typedef unsigned int tag_t;
+typedef tag_t* tag_p_t;
+#endif
+
+#ifndef UF_LIST_T_DEFINED
+#define UF_LIST_T_DEFINED
+typedef struct uf_list_s* uf_list_p_t;
+struct uf_list_s {
+	tag_t                  eid;  /* Object ID */
+	struct uf_list_s* next;  /* Pointer to the next OID in the list */
+};
+
+typedef struct uf_list_s uf_list_t;
+#endif
+
+#ifndef NULL_TAG
+#define NULL_TAG      ((tag_t)0)
+#endif
+
+#ifndef LOGICAL_DEFINED
+#define LOGICAL_DEFINED
+#if defined(__cplusplus)
+typedef bool logical;
+#else
+typedef unsigned char logical;
+#endif
+#endif
+
+#ifndef BYTE_DEFINED
+#define BYTE_DEFINED
+typedef unsigned char byte;
+#endif
+
+#if !defined(true) && !defined(__cplusplus)
+#define true   1
+#define false  0
+#endif
+
+#ifndef TRUE
+#define TRUE   1
+#define FALSE  0
+#endif
+
+
 #define UF_MODL_CYLINDRICAL_FACE        16   /* UF_MODL_ask_face_type */
 #define UF_MODL_CONICAL_FACE            17   /* UF_MODL_ask_face_type */
 #define UF_MODL_SPHERICAL_FACE          18   /* UF_MODL_ask_face_type */
@@ -122,25 +174,425 @@ static double PI = 3.1415926535897932384626433832795;
  typedef struct UF_CURVE_arc_s UF_CURVE_arc_t,
 	 * UF_CURVE_arc_p_t;
 	 
+#define UF_ATTR_MAX_STRING_LEN 132
+#define UF_ATTR_MAX_TITLE_LEN   50
 
+ /*****************************************************************************
+ * Attribute type definitions
+ ****************************************************************************/
+#define UF_ATTR_integer    1
+#define UF_ATTR_real       2
+#define UF_ATTR_time       3
+#define UF_ATTR_null       4
+#define UF_ATTR_string     5
+#define UF_ATTR_any        6
+#define UF_ATTR_reference  7
 
-
- //转换点OK
- static void ZwMathMapPoint(svxMatrix FormMat, svxPoint FormPt, svxMatrix ToMat, svxPoint& ToPt)
+ /*****************************************************************************
+ * Attribute value
+ ****************************************************************************/
+ union UF_ATTR_value_u
  {
-	 FormMat.identity = 0;//表明初始化的矩阵已经被修改了
-	 ToMat.identity = 0;//表明初始化的矩阵已经被修改了
+	 int    integer;    /* If the attribute is an integer attribute,
+						   this can be used to access the value. */
+	 double real;       /* If the attribute is a floating point attribute,
+						   this can be used to access the value. */
+	 int    time[2];    /* If the attribute is a date/time attribute,
+						   this can be used to access the value.
+						   time[0] contains the NX computational date
+						   time[1] contains the NX computational time. */
+	 char* string;    /* If the attribute is a string attribute, then
+						   this is a pointer to the value. The maximum length
+						   of this string is limited by UF_ATTR_MAX_STRING_LEN */
 
-	 svxPoint pt = FormPt;//相对于矩阵B的坐标
-	 svxMatrix invertFormMat;
-	 cvxMatInvert(&FormMat, &invertFormMat);//求相对坐标系矩阵A的逆
-	 svxMatrix transMat;
-	 cvxMatMult(&invertFormMat, &ToMat, &transMat);//矩阵相乘
-	 cvxPntTransform(&transMat, &pt);//点转换
-	 ToPt = pt;
-	 //princ(pt);
+	 char* reference; /* If the attribute is a reference attribute, then
+						   this is a pointer to the value.  The value may
+						   have an embedded expression with the following
+						   syntax:
+							   <Xm.n@exp_name> or <Xm,n@exp_name>
+						   The X indicates that an expression is being
+						   referenced.  The m specifies the minimum field
+						   width.  If necessary, it is padded on the left to
+						   make up the field width.  The n specifies the
+						   maximum number of digits after the decimal point of
+						   the expression value.  The decimal point can be
+						   specified as either . or , thus either m.n or m,n
+						   are acceptable.  */
+ };
+
+ typedef union UF_ATTR_value_u UF_ATTR_value_u_t, * UF_ATTR_value_u_p_t;
+ /*****************************************************************************
+ * Typed attribute value
+ ****************************************************************************/
+ struct UF_ATTR_value_s
+ {
+	 int type;                 /* The type of the attribute.  Valid types are:
+								  UF_ATTR_integer
+								  UF_ATTR_real
+								  UF_ATTR_time
+								  UF_ATTR_null
+								  UF_ATTR_string
+								  UF_ATTR_reference
+							   */
+	 UF_ATTR_value_u_t value;  /* The attribute value */
+ };
+
+ typedef struct UF_ATTR_value_s UF_ATTR_value_t, * UF_ATTR_value_p_t;
+
+
+ static void princ(svxMatrix matx)
+ {
+	 char msg[256] = "";
+	 sprintf_s(msg, "matx pt= %f,  %f,  %f", matx.xt, matx.yt, matx.zt);
+	 cvxMsgDisp(msg);
+	 sprintf_s(msg, "matx X= %f,  %f,  %f", matx.xx, matx.xy, matx.xz);
+	 cvxMsgDisp(msg);
+	 sprintf_s(msg, "matx Y= %f,  %f,  %f", matx.yx, matx.yy, matx.yz);
+	 cvxMsgDisp(msg);
+	 sprintf_s(msg, "matx Z= %f,  %f,  %f", matx.zx, matx.zy, matx.zz);
+	 cvxMsgDisp(msg);
  }
-	 
+
+ static void princ_matx(double matx[9])
+ {
+	 char msg[1024] = "";
+	 sprintf_s(msg, "matx X= %f, %f, %f", matx[0], matx[1], matx[2]);
+	 cvxMsgDisp(msg);
+	 sprintf_s(msg, "matx Y= %f, %f, %f", matx[3], matx[4], matx[5]);
+	 cvxMsgDisp(msg);
+	 sprintf_s(msg, "matx Z= %f, %f, %f", matx[6], matx[7], matx[8]);
+	 cvxMsgDisp(msg);
+ }
+
+ static void princ(string msg)
+ {
+	 char msg1[1024];
+	 strcpy_s(msg1, msg.c_str());
+	 cvxMsgDisp(msg1);
+ }
+
+
+ static void princ(char msg[256])
+ {
+	 cvxMsgDisp(msg);
+ }
+
+ static void princ(double value1)
+ {
+	 char msg[256] = "";
+	 sprintf_s(msg, "%f", value1);
+	 cvxMsgDisp(msg);
+ }
+ static void princ(double point1[3])
+ {
+	 char msg[1024] = "";
+	 sprintf_s(msg, "%f %f %f", point1[0], point1[1], point1[2]);
+	 cvxMsgDisp(msg);
+ }
+
+ static void princ(int value1)
+ {
+	 char msg[256] = "";
+	 sprintf_s(msg, "%d", value1);
+	 cvxMsgDisp(msg);
+ }
+
+ static void princ(char* canshu, int value1)
+ {
+	 char msg[256] = "";
+	 sprintf_s(msg, canshu, value1);
+	 cvxMsgDisp(msg);
+ }
+
+
+ static void princ(string canshu, string value1)
+ {
+	 char msg[256] = "";
+	 sprintf_s(msg, canshu.c_str(), value1.c_str());
+	 cvxMsgDisp(msg);
+ }
+
+ static void princ(size_t value1)
+ {
+	 char msg[256] = "";
+	 sprintf_s(msg, "%d", (int)value1);
+	 cvxMsgDisp(msg);
+ }
+
+ static void princ(svxVector vec)
+ {
+	 char msg[256] = "";
+	 sprintf_s(msg, "%f %f %f", vec.x, vec.y, vec.z);
+	 cvxMsgDisp(msg);
+ }
+ static void princ(char* canshu, svxVector vec)
+ {
+	 char msg[256] = "";
+	 char canshu1[256] = "";
+	 strcpy_s(canshu1, canshu);
+	 strcat_s(canshu1, "%f, %f, %f");
+	 sprintf_s(msg, canshu1, vec.x, vec.y, vec.z);
+	 cvxMsgDisp(msg);
+ }
+
+
+ static void princ(svxPoint point)
+ {
+	 char msg[256] = "";
+	 sprintf_s(msg, "%f %f %f", point.x, point.y, point.z);
+	 cvxMsgDisp(msg);
+ }
+ static void princ(char* canshu, svxPoint point)
+ {
+	 char msg[256] = "";
+
+	 char canshu1[256] = "";
+	 strcpy_s(canshu1, canshu);
+	 strcat_s(canshu1, "%f, %f, %f");
+	 sprintf_s(msg, canshu1, point.x, point.y, point.z);
+	 cvxMsgDisp(msg);
+ }
+
+ static void uc1601(char* msg, int option)
+ {
+	 if (option==0)
+	 {
+		 cvxMsgDisp(msg);
+	 }
+	 else if (option == 1)
+	 {
+		 cvxGetResponse(1, msg);
+	 }	 
+ }
+
+static void UF_UI_open_listing_window()
+ {
+ }
+ 
+ static void UF_UI_write_listing_window(const char* msg)
+ {
+	 cvxMsgDisp(msg);
+ }
+
+ // 创建一个链表
+ static int UF_MODL_create_list(uf_list_p_t* list) {
+	 *list = NULL;
+	 return 0;
+ }
+
+ // 查询链表数量
+ static int UF_MODL_ask_list_count(uf_list_p_t list, int* count) {
+	 *count = 0;
+	 uf_list_t* current = list;
+	 while (current != NULL) {
+		 (*count)++;
+		 current = current->next;
+	 }
+	 return 0;
+ }
+
+ // 查询链表对象
+ static int UF_MODL_ask_list_item(uf_list_p_t list, int index, tag_t* object) {
+	 uf_list_t* current = list;
+	 int i = 0;
+	 while (current != NULL && i < index) {
+		 current = current->next;
+		 i++;
+	 }
+	 if (current != NULL) {
+		 *object = current->eid;
+	 }
+	 else {
+		 *object = 0; // 表示索引超出范围
+	 }
+	 return 0;
+ }
+
+
+ // 把对象添加到链表中
+ static int UF_MODL_put_list_item(uf_list_p_t& list, tag_t obj_id) {
+	 uf_list_t* newNode = (uf_list_t*)malloc(sizeof(uf_list_t));
+	 if (newNode == NULL) {
+		 fprintf(stderr, "Memory allocation failed\n");
+		 return 1;
+	 }
+	 newNode->eid = obj_id;
+	 newNode->next = NULL;
+
+	 if (list == NULL) {
+		 list = newNode;
+	 }
+	 else {
+		 uf_list_t* current = list;
+		 while (current->next != NULL) {
+			 current = current->next;
+		 }
+		 current->next = newNode;
+	 }
+	 return 0;
+ }
+
+
+ // 从链表中删除对象
+ static  int UF_MODL_delete_list_item(uf_list_s** head, tag_t data) {
+	 uf_list_s* current = *head;
+	 uf_list_s* previous = NULL;
+
+	 // 如果要删除的是头节点
+	 if (current != NULL && current->eid == data) {
+		 *head = current->next;
+		 free(current);
+		 return 0; 
+	 }
+
+	 // 遍历链表找到要删除的节点
+	 while (current != NULL && current->eid != data) {
+		 previous = current;
+		 current = current->next;
+	 }
+
+	 // 如果找到了要删除的节点
+	 if (current != NULL) {
+		 // 从链表中移除它
+		 previous->next = current->next;
+		 free(current);
+	 }
+	 return 0;
+ }
+
+ //删除链表并清空整个链表的函数
+ static int UF_MODL_delete_list(uf_list_p_t* head) {
+	 uf_list_p_t current = *head;
+	 uf_list_p_t next;
+
+	 while (current != NULL) {
+		 next = current->next; // 保存下一个节点的指针
+		 free(current);        // 释放当前节点的内存
+		 current = next;       // 移动到下一个节点
+	 }
+
+	 *head = NULL; // 将头指针设为 NULL
+	 return 0;
+ }
+
+
+
+ static void UF_MTX3_point(svxMatrix matx, svxPoint& point)
+ {
+	 point.x = matx.xt;
+	 point.y = matx.yt;
+	 point.z = matx.zt;
+ }
+
+ static void UF_MTX3_x_vec(svxMatrix matx, svxVector& vec)
+ {
+	 vec.x = matx.xx;
+	 vec.y = matx.xy;
+	 vec.z = matx.xz;
+ }
+
+
+
+ static void UF_MTX3_y_vec(svxMatrix matx, svxVector& vec)
+ {
+	 vec.x = matx.yx;
+	 vec.y = matx.yy;
+	 vec.z = matx.yz;
+ }
+
+ static void UF_MTX3_z_vec(svxMatrix matx, svxVector& vec)
+ {
+	 vec.x = matx.zx;
+	 vec.y = matx.zy;
+	 vec.z = matx.zz;
+ }
+
+
+
+ static	void UF_MTX3_x_vec(svxMatrix mtx, double xvec[3])
+ {
+	 xvec[0] = mtx.xx;
+	 xvec[1] = mtx.xy;
+	 xvec[2] = mtx.xz;
+ }
+
+ static	void UF_MTX3_y_vec(svxMatrix mtx, double xvec[3])
+ {
+	 xvec[0] = mtx.yx;
+	 xvec[1] = mtx.yy;
+	 xvec[2] = mtx.yz;
+ }
+
+ static	void UF_MTX3_z_vec(svxMatrix mtx, double zvec[3])
+ {
+	 zvec[0] = mtx.zx;
+	 zvec[1] = mtx.zy;
+	 zvec[2] = mtx.zz;
+ }
+
+ static	void UF_MTX3_point(svxMatrix mtx, double point[3])
+ {
+	 point[0] = mtx.xt;
+	 point[1] = mtx.yt;
+	 point[2] = mtx.zt;
+ }
+
+
+ static	void UF_VEC3_copy(svxPoint pt, double copy_vec[3])
+ {
+	 copy_vec[0] = pt.x;
+	 copy_vec[1] = pt.y;
+	 copy_vec[2] = pt.z;
+ }
+
+ static	void UF_VEC3_copy(double copy_vec[3], svxPoint& pt)
+ {
+	 pt.x = copy_vec[0];
+	 pt.y = copy_vec[1];
+	 pt.z = copy_vec[2];
+ }
+
+
+ static	void UF_VEC3_copy(svxVector vec, double(&copy_vec)[3])
+ {
+	 copy_vec[0] = vec.x;
+	 copy_vec[1] = vec.y;
+	 copy_vec[2] = vec.z;
+ }
+
+
+ static	void UF_VEC3_copy(double copy_vec[3], svxVector& vec)
+ {
+	 vec.x = copy_vec[0];
+	 vec.y = copy_vec[1];
+	 vec.z = copy_vec[2];
+ }
+
+
+
+ //绝对坐标转用户坐标
+ //UF_CSYS_map_point(UF_CSYS_WORK_COORDS, abs_point,UF_CSYS_ROOT_WCS_COORDS, wcs_point);
+ static void UF_CSYS_map_point(svxMatrix from_csys, svxPoint from_pt, svxMatrix to_csys, svxPoint& to_pt)
+ {
+	 svxMatrix to_csys_invert, transMat;
+	 cvxMatInit(&transMat);
+	 cvxMatInvert(&to_csys, &to_csys_invert);
+	 cvxMatMult(&from_csys, &to_csys_invert, &transMat);
+	 cvxPntTransform(&transMat, &from_pt);
+	 to_pt = from_pt;
+ }
+
+
+ //参数1和3这个改成了对象ID
+ static void UF_CSYS_map_point(int from_csys_id, svxPoint from_pt, int to_csys_id, svxPoint& to_pt)
+ {
+	 svxCSYSData from_csys_data, to_csys_data;
+	 cvxCSYSGetData(from_csys_id, &from_csys_data);
+	 cvxCSYSGetData(to_csys_id, &to_csys_data);
+	 UF_CSYS_map_point(from_csys_data.Frame, from_pt, to_csys_data.Frame, to_pt);
+ }
+
+
 //句柄列表转ID数组
 static vector <int> hand2id(int count, szwEntityHandle* handleList)
 {
@@ -177,13 +629,28 @@ static int id2hand(int objid, szwEntityHandle* entityHandle)
 }
 
 
+
 //移除参数
-static int zwdelparam(int objectid)
+static int zwdelparam(int& objectid)
 {
-	int objid = 0;
-	int ret = cvxPartDefeature(1, &objectid);
-	return objid;
+	int* label = NULL;
+	cvxEntLabelGet(objectid, &label);
+	//移除参数
+	int count = 1;//造型数量
+	cvxPartDefeature(count, &objectid);
+
+	//重新获取圆柱ID
+	cvxEntByLabel(label, 1, &objectid);
+	cvxMemFree((void**)&label);
+
+	return objectid;
 }
+//移除参数
+static void zwdelparam(int Count, int* objectid)
+{
+	int ret = cvxPartDefeature(Count, objectid);
+}
+
 
 
 //找体的面
@@ -230,6 +697,7 @@ static	int PK_Subtract_Bodies(int pk_target_body, int pk_tool_body)
 	cvxPartBool(VX_BOOL_REMOVE, pk_target_body, 1, &pk_tool_body, 0);
 	return 0;
 }
+
 
 
 static	int UF_MODL_ask_face_type(int face_id, int* facetype)
@@ -334,11 +802,11 @@ static	int UF_MODL_put_list_item(vector <int>& objects, int objid)
 
 static	int UF_MODL_ask_face_body(int face, int* bodyid)
 {
-	szwEntityHandle facehand;
-	id2hand(face, &facehand);
-	szwEntityHandle shape;
-	*bodyid = hand2id(shape);
-	//cvxPartInqFaceShape(face, bodyid);
+	//szwEntityHandle facehand;
+	//id2hand(face, &facehand);
+	//szwEntityHandle shape;
+	//*bodyid = hand2id(shape);
+	cvxPartInqFaceShape(face, bodyid);
 	return 0;
 }
 
@@ -527,6 +995,153 @@ static void UF_VEC3_is_parallel(const double vec1[3], const double vec2[3], cons
 	szwVector vector2 = { vec2[0],vec2[1],vec2[2] };
 	ZwVectorParallelCheck(0, vector1, vector2, tol, ifParallel);
 }
+
+
+static int UF_VEC3_is_parallel1(const double a1[3], const double a2[3], double a3, int* result)
+{
+	double v7, v8, v9, v10, v11, v12;
+
+	if (fabs(a1[0]) >= 1.0e19 || fabs(a1[1]) >= 1.0e19 || fabs(a1[2]) >= 1.0e19)
+	{
+		return 1;
+	}
+	if (fabs(a2[0]) >= 1.0e19 || fabs(a2[1]) >= 1.0e19 || fabs(a2[2]) >= 1.0e19)
+	{
+		return 1;
+	}
+
+	v7 = a1[0];
+	*result = 1;
+	if (fabs(a1[1] * a1[1] + v7 * v7 + a1[2] * a1[2]) > 1.0e-20)
+	{
+		v8 = a2[0];
+		if (fabs(a2[1] * a2[1] + v8 * v8 + a2[2] * a2[2]) > 1.0e-20)
+		{
+			v9 = a1[1];
+			v10 = a1[2];
+			v11 = a2[2];
+			v12 = a2[1];
+			if (fabs(
+				((v10 * v8 - v11 * v7) * (v10 * v8 - v11 * v7)
+					+ (v11 * v9 - v12 * v10) * (v11 * v9 - v12 * v10)
+					+ (v12 * v7 - v9 * v8) * (v12 * v7 - v9 * v8))
+				/ ((v9 * v9 + v7 * v7 + v10 * v10)
+					* (v12 * v12 + v8 * v8 + v11 * v11))) > a3 * a3)
+				return 0;
+		}
+	}
+	return 0;
+}
+
+static int UF_VEC3_ask_perpendicular1(const double a1[3], double a2[3])
+{
+	int result;
+	double v4, v6, v7, v8;
+
+	if (fabs(a1[0]) >= 1.0e19 || fabs(a1[1]) >= 1.0e19 || fabs(a1[2]) >= 1.0e19)
+	{
+		return 1;
+	}
+	v4 = a1[0];
+	result = 0;
+	if (fabs(a1[1] * a1[1] + v4 * v4 + a1[2] * a1[2]) <= 1.0e-20)
+	{
+		a2[0] = 0;
+		a2[1] = 0;
+		a2[2] = 0;
+		return result;
+	}
+	v6 = fabs(v4);
+	v7 = fabs(a1[1]);
+	v8 = fabs(a1[2]) - 1.0e-10;
+	if (v6 < v7 - 1.0e-10)
+	{
+		if (v6 < v8)
+		{
+			a2[0] = 0;
+			if (v7 >= v8)
+			{
+				a2[1] = -a1[2];
+				a2[2] = a1[1];
+				return 1;
+			}
+			else
+			{
+				a2[1] = a1[2];
+				result = 1;
+				a2[2] = -a1[1];
+			}
+			return result;
+		}
+		a2[2] = 0;
+		if (v7 >= v6 - 1.0e-10)
+		{
+			a2[0] = a1[1];
+		LABEL_22:
+			result = 1;
+			a2[1] = -a1[0];
+			return result;
+		}
+		goto LABEL_20;
+	}
+	if (v7 >= v8)
+	{
+		a2[2] = 0;
+		if (v7 >= v6 - 1.0e-10)
+		{
+			a2[0] = a1[1];
+			goto LABEL_22;
+		}
+	LABEL_20:
+		a2[0] = -a1[1];
+		a2[1] = a1[0];
+		return 1;
+	}
+	a2[1] = 0;
+	if (v6 >= v8)
+	{
+		a2[0] = -a1[2];
+		a2[2] = a1[0];
+		return 1;
+	}
+	else
+	{
+		a2[0] = a1[2];
+		result = 1;
+		a2[2] = -a1[0];
+	}
+	return result;
+}
+
+static int UF_VEC3_is_perpendicular1(const double a1[3], const double a2[3], double a3, int* result)
+{
+	int ret = 0;
+	*result = 1;
+	if (fabs(a1[0]) >= 1.0e19 || fabs(a1[1]) >= 1.0e19 || fabs(a1[2]) >= 1.0e19)
+	{
+		return 1;
+	}
+	if (fabs(a2[0]) >= 1.0e19 || fabs(a2[1]) >= 1.0e19 || fabs(a2[2]) >= 1.0e19)
+	{
+		return 1;
+	}
+	double t1 = a1[0] * a2[0] + a1[1] * a2[1] + a1[2] * a2[2];
+	double t2 = a1[0] * a2[0] + a1[1] * a2[1] + a1[2] * a2[2];
+
+	double t3 = a2[0] * a2[0] + a2[1] * a2[1] + a2[2] * a2[2];
+	double t4 = a1[0] * a1[0] + a1[1] * a1[1] + a1[2] * a1[2];
+
+	double v3 = a3 * a3;
+	if (fabs(t1) > 1.0e-20 && fabs(t2) > 1.0e-20)
+	{
+		if (fabs(t1 * t2 / (t3 * t4)) > v3)
+		{
+			*result = 0;
+		}
+	}
+	return ret;
+}
+
 
 static void UF_VEC3_sub(const double vec1[3], const double vec2[3], double(&vec_diff)[3])
 {
@@ -850,7 +1465,7 @@ static int UF_CURVE_ask_line_data(int line_tag, UF_CURVE_line_t* line_coords)
 static int UF_CURVE_create_arc(UF_CURVE_arc_t arc_coords, int* arc_tag)
 {
 	int ret = 0;
-	if (fabs(arc_coords.end_angle - arc_coords.start_angle - PI) < 0.001)
+	if (fabs(arc_coords.end_angle - arc_coords.start_angle - M_PI) < 0.001)
 	{
 		svxCircleData arcData;
 		cvxPartCircleInit(&arcData);
@@ -872,6 +1487,24 @@ static int UF_CURVE_create_arc(UF_CURVE_arc_t arc_coords, int* arc_tag)
 		arcData.arcAngle = arc_coords.end_angle - arc_coords.start_angle;//ZW可能使用起始角度与圆弧角度，不是弧度，也不是终止角度
 		ret = cvxPartArc(&arcData, arc_tag);
 		//cvxPartArc3pt();//建议用3点画圆弧比较好
+	}
+	return ret;
+}
+
+//create_flag=1= arc   2= circle
+static int UF_CURVE_create_arc_thru_3pts(int     create_flag, double  first_point[3], double  second_point[3], double  third_point[3], int* arc_tag)
+{
+	szwPoint start = { first_point[0], first_point[1],  first_point[2] };
+	szwPoint center = { second_point[0], second_point[1],  second_point[2] };
+	szwPoint end = { third_point[0], third_point[1],  third_point[2] };
+	int ret = 0;
+	if (create_flag == 1)
+	{
+		ret = cvxPartArc3pt(&start,& end,&center, arc_tag);
+	} 
+	else if (create_flag == 2)
+	{
+		ret = cvxPartCir3pt(&start, &end, &center, arc_tag);
 	}
 	return ret;
 }
@@ -1036,8 +1669,7 @@ static int UF_OBJ_delete_array_of_objects(const int num_objects, int* objectid, 
 static int UF_OBJ_ask_color(int obj, int* colorvalue)
 {
 
-}
-
+}												 
 static int UF_OBJ_set_color(int obj, int colorvalue)
 {
 	//UG216种颜色的RGB值
@@ -1308,3 +1940,1093 @@ static int UF_OBJ_set_name(int obj, char* name)
 	return ret;
 }
 
+static int UF_MODL_ask_face_uv_minmax(int idFace, double(&uv_min_max)[4])
+{
+	svxLimit U, V;
+	int ret = cvxFaceParam(idFace, &U, &V);
+	uv_min_max[0] = U.min;
+	uv_min_max[1] = U.max;
+	uv_min_max[2] = V.min;
+	uv_min_max[3] = V.max;
+	return ret;
+}
+
+//radii没获取到
+static int UF_MODL_ask_face_props(int face_id, double uv[2], double point[3], double u1[3], double v1[3], double u2[3], double v2[3], double unit_norm[3], double radii[2])
+{
+	radii[0] = 0;
+	radii[1] = 0;
+	/*
+	svxPoint pt;
+	svxVector dir;
+	int iret = cvxFaceEval(face_id, uv[0], uv[1], &pt, &dir);
+	*/
+	szwEntityHandle faceHandle;
+	id2hand(face_id, &faceHandle);
+	szwSurface surfacedata;
+	ZwFaceSurfaceDataGet(faceHandle, &surfacedata);
+
+	szwPoint point1;
+	szwVector normalDirection, uTangent, vTangent;
+	int ret=ZwFacePointGetByUVparameter(surfacedata, uv[0], uv[1], &point1, &normalDirection,& uTangent, &vTangent);
+	ZwSurfaceDataFree(&surfacedata);
+	ZwEntityHandleFree(&faceHandle);
+
+	point[0] = point1.x;
+	point[1] = point1.y;
+	point[2] = point1.z;
+
+	unit_norm[0] = normalDirection.x;
+	unit_norm[1] = normalDirection.y;
+	unit_norm[2] = normalDirection.z;
+
+	u1[0] = uTangent.x;
+	u1[1] = uTangent.y;
+	u1[2] = uTangent.z;
+
+	v1[0] = vTangent.x;
+	v1[1] = vTangent.y;
+	v1[2] = vTangent.z;
+	return ret;
+}
+
+
+
+/*
+ZW_CURVE_LINE = 1
+	ZW_CURVE_ARC = 2
+	ZW_CURVE_CIRCLE = 3
+	ZW_CURVE_NURB = 4
+	ZW_CURVE_ELLIPSE2 = 5*/
+
+//allcurve里面的还要循环释放	ZwEntityHandleFree(&entity);
+static int UF_OBJ_cyl_curves(int type, vector <szwEntityHandle>& allcurve)
+{
+	allcurve.clear();
+	int countCurve=0;
+	szwEntityHandle* curveList=NULL;
+	int ret=ZwCurveListGet(&countCurve, &curveList);
+	for (size_t i = 0; i < countCurve; i++)
+	{
+		szwCurve curve;
+		ZwCurveNURBSDataGet(curveList[i], 1, &curve);
+		if (curve.type == type)
+		{
+			allcurve.push_back(curveList[i]);
+		}
+	}
+	ZwEntityHandleListFree(countCurve, &curveList);
+	return ret;
+}
+
+static int UF_OBJ_cycle_objs_in_part(int part_tag, int type, vector <int>& objs)
+{
+	int ret = 0;
+	objs.clear();
+	int count;
+	int* objects;
+	switch (type)
+	{
+	case UF_dummy_type:
+	{
+		ret = cvxPartInqAxis(&count, &objects);//平面，ZW没有
+	}
+	case UF_point_type:
+	{
+		ret = cvxPartInqPoints(&count, &objects);
+	}
+	case UF_line_type:
+	{
+		vector <szwEntityHandle> allcurve;
+		UF_OBJ_cyl_curves(ZW_CURVE_LINE, allcurve);
+		objs = hand2id(allcurve.size(), allcurve.data());
+		for (size_t i = 0; i < allcurve.size(); i++)
+		{
+			ZwEntityHandleFree(&allcurve[i]);
+		}
+	}
+	case UF_circle_type:
+	{
+		vector <szwEntityHandle> allcurve;
+		UF_OBJ_cyl_curves(ZW_CURVE_ARC, allcurve);
+		objs = hand2id(allcurve.size(), allcurve.data());
+		for (size_t i = 0; i < allcurve.size(); i++)
+		{
+			ZwEntityHandleFree(&allcurve[i]);
+		}
+		UF_OBJ_cyl_curves(ZW_CURVE_CIRCLE, allcurve);
+		vector <int> objs1;
+		objs1 = hand2id(allcurve.size(), allcurve.data());
+		for (size_t i = 0; i < allcurve.size(); i++)
+		{
+			objs.push_back(objs1[i]);
+			ZwEntityHandleFree(&allcurve[i]);
+		}
+	}
+	case UF_conic_type:
+	{	
+		vector <szwEntityHandle> allcurve;
+		UF_OBJ_cyl_curves(ZW_CURVE_ELLIPSE2, allcurve);
+		objs = hand2id(allcurve.size(), allcurve.data());
+		for (size_t i = 0; i < allcurve.size(); i++)
+		{
+			ZwEntityHandleFree(&allcurve[i]);
+		}
+	}
+	case UF_spline_type:
+	{	
+		/*
+		ret = cvxPartInqCurves(&count, &objects);
+		for (size_t i = 0; i < count; i++)
+		{
+			svxCurve Crv;
+			cvxPartInqCurve(objects[i], 1, &Crv);
+			if (VX_CRV_NURB == Crv.Type)
+			{
+				objs.push_back(objects[i]);
+			}
+		}*/
+		vector <szwEntityHandle> allcurve;
+		UF_OBJ_cyl_curves(ZW_CURVE_ELLIPSE2, allcurve);
+		objs = hand2id(allcurve.size(), allcurve.data());
+		for (size_t i = 0; i < allcurve.size(); i++)
+		{
+			ZwEntityHandleFree(&allcurve[i]);
+		}
+	}
+	case UF_group_type:
+	{
+		ret = cvxPartInqGroupList(&count, &objects);
+	}
+	case UF_drafting_entity_type:
+	{
+		//cvxPartInqCurves(&count, &objects);
+	}
+	case UF_dimension_type:
+	{
+		//ZwDrawingSheetDimensionListGet
+		//(int idDrawing, evxDimType * dimTypeList, int dimTypeCount, int* count, int** dims);
+		//cvxDwgInqDims
+		//cvxPartInqCurves(&count, &objects);
+	}
+	case UF_coordinate_system_type:
+	{
+		ret = cvxPartInqCsys(&count, &objects);
+	}
+	case UF_view_type:
+	{
+		ret = cvxPartInqViews(&count, &objects);
+	}
+	case UF_drawing_type:
+	{
+		int count;
+		szwEntityHandle* sheetList;
+		ZwDrawingSheetListGet(& count, &sheetList);
+		objs = hand2id(count, sheetList);
+		ZwEntityHandleListFree(count, &sheetList);
+	}
+	case UF_solid_type:
+	{
+		ret = cvxPartInqShapes(0, 0, &count, &objects);
+	}
+
+	case UF_sketch_type:
+	{
+		szwEntityHandle* sketchList = nullptr;
+		ret = ZwSketchListGet(&count, &sketchList);
+		for (size_t i = 0; i < count; i++)
+		{
+			int caotuid = hand2id(sketchList[i]);
+		}
+		ZwEntityHandleListFree(count, &sketchList);
+	}
+	case UF_texture_type:
+	{
+		ret = cvxPartInqTexts(&count, &objects);
+	}
+	case UF_feature_type:
+	{
+		szwEntityHandle* featureList = nullptr;
+		ret = ZwFeatureListGet(&count, &featureList);
+		for (size_t i = 0; i < count; i++)
+		{
+			int caotuid = hand2id(featureList[i]);
+		}
+		ZwEntityHandleListFree(count, &featureList);
+	}
+
+	default:
+		break;
+	}
+	if (count>0)
+	{
+		for (size_t j = 0; j < count; j++)
+		{
+			objs.push_back(objects[j]);
+		}
+		cvxMemFree((void**)&objects);
+	}
+	return ret;
+}
+
+static int UF_OBJ_cycle_all(int part_tag,vector <int> & allobjects )
+{
+
+}
+
+//这个参数与UG有一些差别
+static int UF_CSYS_create_csys(double csys_origin[3],double matx[9], int * csysid)
+{
+	int idCSYS = 0;
+	svxCSYSData CSYS = { 0 };
+	cvxPartCSYSNewInit(VX_CSYS_ONLY_MATRIX, &CSYS);
+	svxVector xdir = { matx[0], matx[1], matx[2] };
+	svxVector ydir = { matx[3], matx[4], matx[5] };
+	svxPoint pt = { csys_origin[0], csys_origin[1], csys_origin[2] };
+	cvxMatPntVecs(&pt, &xdir, &ydir, &CSYS.Frame);
+	int ret=cvxPartCSYSNew(&CSYS, csysid);
+	return ret;
+}
+
+//这个参数与UG有一些差别
+static int UF_CSYS_create_temp_csys(double csys_origin[3], double matx[9], int* csysid)
+{
+	int idCSYS = 0;
+	svxCSYSData CSYS = { 0 };
+	cvxPartCSYSNewInit(VX_CSYS_ONLY_MATRIX, &CSYS);
+	svxVector xdir = { matx[0], matx[1], matx[2] };
+	svxVector ydir = { matx[3], matx[4], matx[5] };
+	svxPoint pt = { csys_origin[0], csys_origin[1], csys_origin[2] };
+	cvxMatPntVecs(&pt, &xdir, &ydir, &CSYS.Frame);
+	int ret = cvxPartCSYSNew(&CSYS, csysid);
+	return ret;
+}
+
+
+static int UF_CSYS_set_wcs(int csysid)
+{
+	int ret = cvxPartActiveAsLCS(csysid);
+	return ret;
+}
+
+//这个参数与UG有一些差别
+static void UF_CSYS_ask_wcs(svxMatrix Mat)
+{
+	 cvxPartInqLCSMat(&Mat);
+}
+
+//这个参数与UG有一些差别
+static int UF_CSYS_create_matrix(double csys_origin[3],double matx[9], svxMatrix& Mat)
+{
+	svxVector xdir = { matx[0], matx[1], matx[2] };
+	svxVector ydir = { matx[3], matx[4], matx[5] };
+	svxPoint pt = { csys_origin[0], csys_origin[1], csys_origin[2] };
+	int ret = cvxMatPntVecs(&pt, &xdir, &ydir, &Mat);
+	return ret;
+}
+
+//这个参数与UG有一些差别
+static int UF_CSYS_create_matrix(double matx[9], svxMatrix& Mat)
+{
+	svxVector xdir = { matx[0], matx[1], matx[2] };
+	svxVector ydir = { matx[3], matx[4], matx[5] };
+	svxPoint pt = { 0};
+	int ret = cvxMatPntVecs(&pt, &xdir, &ydir, &Mat);
+	return ret;
+}
+
+//这个参数与UG有一些差别
+static int UF_CSYS_ask_matrix_values(svxMatrix matx,double matx_vec[9])
+{
+	matx_vec[0] = matx.xx;
+	matx_vec[1] = matx.xy;
+	matx_vec[2] = matx.xz;
+
+	matx_vec[3] = matx.yx;
+	matx_vec[4] = matx.yy;
+	matx_vec[5] = matx.yz;
+
+	matx_vec[6] = matx.zx;
+	matx_vec[7] = matx.zy;
+	matx_vec[8] = matx.zz;
+	return 0;
+}
+
+//这个只是查面的
+static int  UF_CSYS_ask_matrix_of_object(int obj,double matx_vec[9])
+{
+	svxSrfPrim SrfPrim;
+	cvxPartInqFaceSrfPrim(obj, &SrfPrim);
+	if (SrfPrim.srfType == VX_SF_PRIM_PLN)
+	{
+		UF_CSYS_ask_matrix_values(SrfPrim.srfData.pln.form, matx_vec);
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_SPH)
+	{
+		UF_CSYS_ask_matrix_values(SrfPrim.srfData.sph.form, matx_vec);
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_CON)
+	{
+		UF_CSYS_ask_matrix_values(SrfPrim.srfData.con.form, matx_vec);
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_CYL)
+	{
+		UF_CSYS_ask_matrix_values(SrfPrim.srfData.cyl.form, matx_vec);
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_NURB)
+	{
+		svxMatrix Mat;
+		cvxMatInit(&Mat);
+		UF_CSYS_ask_matrix_values(Mat, matx_vec);
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_ELLSO)
+	{
+		UF_CSYS_ask_matrix_values(SrfPrim.srfData.ellso.form, matx_vec);
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_TORUS)
+	{
+		UF_CSYS_ask_matrix_values(SrfPrim.srfData.torus.form, matx_vec);
+	}
+	cvxSrfPrimFree(&SrfPrim);
+	return 0;
+}
+
+
+
+static int UF_CSYS_ask_csys_info(int csys_id, double matrix[9], double csys_origin[3])
+{
+	svxCSYSData CSYS;
+	int ret =cvxCSYSGetData(csys_id, &CSYS);
+	UF_CSYS_ask_matrix_values(CSYS.Frame, matrix);
+	csys_origin[0] = CSYS.Frame.xt;
+	csys_origin[1] = CSYS.Frame.yt;
+	csys_origin[2] = CSYS.Frame.zt;
+	return ret;
+}
+
+
+
+//圆锥点是中间的，直径也是中间的，ZW提供是最大的
+static	int UF_MODL_ask_face_data(int face_id, int* facetype, double point[], double dir[], double box[], double* radius, double* rad_data, int* norm_dir)
+{
+	*facetype = 0;
+	for (size_t i = 0; i < 3; i++)
+	{
+		point[i] = 0;
+		dir[i] = 0;
+		box[i] = 0;
+		box[i + 3] = 0;
+	}
+	//ZW-0是凸面，1是凹面
+	int aotu = cvxFaceIsConcave(face_id);
+	if (aotu == 0)
+	{
+		*norm_dir = 1;
+	}
+	else if (aotu == 1)
+	{
+		*norm_dir = 0;
+	}
+	svxBndBox Box;
+	svxSrfPrim SrfPrim;
+	cvxPartInqFaceSrfPrim(face_id, &SrfPrim);
+	if (SrfPrim.srfType == VX_SF_PRIM_PLN)
+	{
+		*facetype = UF_MODL_PLANAR_FACE;
+		UF_MTX3_point(SrfPrim.srfData.pln.form, point);
+		UF_MTX3_z_vec(SrfPrim.srfData.pln.form, dir);
+		cvxPartInqEntBox(face_id, &SrfPrim.srfData.pln.form, &Box);
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_SPH)
+	{
+		*facetype = UF_MODL_SPHERICAL_FACE;
+		UF_MTX3_point(SrfPrim.srfData.sph.form, point);
+		UF_MTX3_z_vec(SrfPrim.srfData.sph.form, dir);
+		*radius = SrfPrim.srfData.sph.radius;
+		//cvxPartInqEntBox(face_id, &SrfPrim.srfData.sph.form, &Box);//与NX一样吧，不按圆柱方向获取大小了，按绝对坐标取
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_CON)
+	{
+		*facetype = UF_MODL_CONICAL_FACE;
+		svxBndBox conBox;
+		cvxPartInqEntBox(face_id, &SrfPrim.srfData.con.form, &conBox);
+		double len = conBox.Z.max - conBox.Z.min;
+		svxPoint cenpt = { SrfPrim.srfData.con.form.xt,SrfPrim.srfData.con.form.yt,SrfPrim.srfData.con.form.zt };
+		svxVector zvec = { SrfPrim.srfData.con.form.zx,SrfPrim.srfData.con.form.zy,SrfPrim.srfData.con.form.zz };
+		UF_MTX3_z_vec(SrfPrim.srfData.con.form, dir);
+		cvxPntTranslate(&cenpt, &zvec, len/2);
+		UF_VEC3_copy(cenpt, point);
+		double duanlen = SrfPrim.srfData.con.radius2-SrfPrim.srfData.con.radius1;
+		double xielen = sqrt(duanlen * duanlen + len * len);
+		double angle = std::atan(duanlen/len);
+		double degrees = angle * (180.0 / M_PI);
+		double zlen = fabs(tan(angle) * len / 2);
+
+		*radius = SrfPrim.srfData.con.radius2 - zlen;//大半径跟UG不一样，UG要
+		*rad_data = angle;//小半径//要转角度
+
+		//char msg[256] = "";
+		//sprintf_s(msg, "r1=%f r2=%f r0=%f  zlen=%f ", SrfPrim.srfData.con.radius1, SrfPrim.srfData.con.radius2, SrfPrim.srfData.con.radius2- zlen, zlen);
+		//cvxMsgDisp(msg);
+
+		//sprintf_s(msg, "r1=%f r2=%f dl=%f l=%f xl=%f a=%f j=%f", SrfPrim.srfData.con.radius1, SrfPrim.srfData.con.radius2, duanlen, len, xielen, angle, degrees);
+		//cvxMsgDisp(msg);
+		//长度有问题
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_CYL)
+	{
+		*facetype = UF_MODL_CYLINDRICAL_FACE;
+		svxBndBox cyl;
+		cvxPartInqEntBox(face_id, &SrfPrim.srfData.cyl.form, &cyl);
+		double len = cyl.Z.max - cyl.Z.min;
+		svxPoint cenpt = { SrfPrim.srfData.con.form.xt,SrfPrim.srfData.cyl.form.yt,SrfPrim.srfData.con.form.zt };
+		svxVector zvec = { SrfPrim.srfData.con.form.zx,SrfPrim.srfData.cyl.form.zy,SrfPrim.srfData.con.form.zz };
+		cvxPntTranslate(&cenpt, &zvec, len / 2);
+		UF_VEC3_copy(cenpt, point);
+		UF_MTX3_z_vec(SrfPrim.srfData.cyl.form, dir);
+		*radius = SrfPrim.srfData.cyl.radius;
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_NURB)
+	{
+		*facetype = UF_MODL_PARAMETRIC_FACE;
+		//SrfPrim.srfData.srf.P.
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_ELLSO)
+	{
+		*facetype = UF_MODL_FOREIGN_FACE;
+		UF_MTX3_point(SrfPrim.srfData.ellso.form, point);
+		UF_MTX3_z_vec(SrfPrim.srfData.ellso.form, dir);
+		*radius = SrfPrim.srfData.ellso.xlen;
+		*rad_data = SrfPrim.srfData.ellso.ylen;
+	}
+	else if (SrfPrim.srfType == VX_SF_PRIM_TORUS)
+	{
+		//圆环面
+		*facetype = UF_MODL_TOROIDAL_FACE;
+		UF_MTX3_point(SrfPrim.srfData.torus.form, point);
+		UF_MTX3_z_vec(SrfPrim.srfData.torus.form, dir);
+		*radius = SrfPrim.srfData.torus.dPathRadius;
+		*rad_data = SrfPrim.srfData.torus.dProfRadius;
+	}
+	cvxSrfPrimFree(&SrfPrim);
+
+	svxMatrix Mat;
+	cvxMatInit(&Mat);
+	cvxPartInqEntBox(face_id, &Mat, &Box);
+	box[0] = Box.X.min;
+	box[1] = Box.Y.min;
+	box[2] = Box.Z.min;
+	box[3] = Box.X.max;
+	box[4] = Box.Y.max;
+	box[5] = Box.Z.max;
+	return 0;
+}
+
+//体找特征
+static int UF_MODL_ask_body_features(int idshape,vector <int> &features )
+{
+	int Count = 0;
+	int* Features = NULL;
+	int ret =cvxPartInqShapeFtrs(idshape, 0, &Count,& Features);
+	for (size_t i = 0; i < Count; i++)
+	{
+		features.push_back(Features[i]);
+	}
+	if (Features!=NULL)
+	{
+		cvxMemFree((void**)&Features);
+	}
+	return ret;
+}
+
+//特征找体
+static int UF_MODL_ask_feat_body(int Features,int *idshape)
+{
+	int* label = NULL;
+	cvxEntLabelGet(Features, &label);
+	cvxEntByLabel(label, 1, idshape);
+	cvxMemFree((void**)&label);
+	return 0;
+}
+
+//特征找面
+static int UF_MODL_ask_feat_faces(int feat_id, vector <int>& faces)
+{
+	int n_ents = 0;
+	int* ents_ids = NULL;
+	int ret = cvxPartInqFtrEnts(feat_id, VX_ENT_FACE, &n_ents, &ents_ids);
+	for (size_t j = 0; j < n_ents; j++)
+	{
+		faces.push_back(ents_ids[j]);
+	}
+	if (ents_ids != NULL)
+	{
+		cvxMemFree((void**)&ents_ids);
+	}
+	return ret;
+}
+
+//特征找边
+static int UF_MODL_ask_feat_edges(int feat_id, vector <int>& edges)
+{
+	int n_ents = 0;
+	int* ents_ids = NULL;
+	int ret = cvxPartInqFtrEnts(feat_id, VX_ENT_EDGE, &n_ents, &ents_ids);
+	for (size_t j = 0; j < n_ents; j++)
+	{
+		edges.push_back(ents_ids[j]);
+	}
+	if (ents_ids != NULL)
+	{
+		cvxMemFree((void**)&ents_ids);
+	}
+	return ret;
+}
+
+
+//特征找所有体
+static int UF_MODL_ask_feat_bodys(int feat_id, vector <int>& bodys)
+{
+	int n_ents = 0;
+	int* ents_ids = NULL;
+	int ret = cvxPartInqFtrEnts(feat_id, VX_ENT_SHAPE, &n_ents, &ents_ids);
+	for (size_t j = 0; j < n_ents; j++)
+	{
+		bodys.push_back(ents_ids[j]);
+	}
+	if (ents_ids != NULL)
+	{
+		cvxMemFree((void**)&ents_ids);
+	}
+	return ret;
+}
+
+//多选
+static int UF_UI_select_with_class_dialog(char* message, char* title, int scope, evxEntInpOpt option, void* user_data, int* response, int* count, int** object)
+{
+	int ret = cvxGetEnts(title, option, 1, count, object);
+	return ret;
+}
+
+//单选择
+static int UF_UI_select_with_single_dialog(char* message, char* title, int scope, evxEntInpOpt option, void* user_data, int* response, int* object, double cursor[3], int* view)
+{
+	cursor[0] = 0;
+	cursor[1] = 0;
+	cursor[2] = 0;
+	*view = 0;
+	int ret = cvxGetEnt(title, option, 1, object);
+	return ret;
+}
+
+
+//属性删除
+static int UF_ATTR_delete(int object, int type, char* title)
+{
+
+}
+
+//与UG有一点点差别
+//获取实体属性
+// 注意：如果是字符串使用完毕后应该释放内存	// free(values[i].value.string);
+static int UF_ATTR_cycle(int obj_tag, int* indx, int type, char* title,vector<UF_ATTR_value_t> &values)
+{
+	indx = 0;	
+	//获取所有属性
+	svxPartAttribute At;
+	cvxShellAtGet(obj_tag, &At);
+	for (int k = 0; k < At.UserAttributeCount; k++)
+	{
+		if (strcmp(At.UserAttribute[k].label, title)==0)
+		{
+			UF_ATTR_value_t att;
+
+			if (At.UserAttribute[k].type == VX_ATTR_INT)
+			{
+				att.type = UF_ATTR_integer;
+				att.value.integer = (int)At.UserAttribute[k].dValue;
+			}
+			else if (At.UserAttribute[k].type == VX_ATTR_REAL)
+			{
+				att.type = UF_ATTR_real;
+				att.value.real = At.UserAttribute[k].dValue;
+			}
+			else if (At.UserAttribute[k].type == VX_ATTR_STRING)
+			{
+				att.type = UF_ATTR_string;
+				att.value.string = (char*)malloc(UF_ATTR_MAX_STRING_LEN * sizeof(char));
+				strcpy_s(att.value.string, UF_ATTR_MAX_STRING_LEN, At.UserAttribute[k].strValue);
+				// 注意：使用完毕后应该释放内存	// free(str);
+			}
+			else if (At.UserAttribute[k].type == VX_ATTR_DATE)
+			{
+				att.type = UF_ATTR_time;
+				att.value.string = (char*)malloc(UF_ATTR_MAX_STRING_LEN * sizeof(char));
+				strcpy_s(att.value.string, UF_ATTR_MAX_STRING_LEN,At.UserAttribute[k].strValue);
+				// 注意：使用完毕后应该释放内存	// free(str);
+			}
+			
+			values.push_back(att);
+		}
+	}
+
+	return 0;
+}
+
+//设置字符串属性
+static void set_obj_attr(int object, const char* title, const char* vlaue)
+{
+	evxAtItemId itemId = VX_AT_USER;
+	svxAttribute At;
+	At.type = VX_ATTR_STRING;
+	strcpy_s(At.label, title);
+	strcpy_s(At.strValue, vlaue);
+	cvxShellAtItemSet(object, itemId, &At);
+}
+
+//设置int属性
+static void set_obj_attr(int object, const char* title, int vlaue)
+{
+	evxAtItemId itemId = VX_AT_USER;
+	svxAttribute At;
+	At.type = VX_ATTR_STRING;
+	strcpy_s(At.label, title);
+	At.dValue= vlaue;
+	cvxShellAtItemSet(object, itemId, &At);
+}
+
+//设置double属性
+static void set_obj_attr(int object, const char* title, double vlaue)
+{
+	evxAtItemId itemId = VX_AT_USER;
+	svxAttribute At;
+	At.type = VX_ATTR_STRING;
+	strcpy_s(At.label, title);
+	At.dValue = vlaue;
+	cvxShellAtItemSet(object, itemId, &At);
+}
+
+//设置属性
+static int UF_ATTR_assign(int object, const char* title, UF_ATTR_value_t vlaue)
+{
+	if (vlaue.type== UF_ATTR_integer)
+	{
+		set_obj_attr(object, title, vlaue.value.integer);
+	}
+	else if (vlaue.type == UF_ATTR_real)
+	{
+		set_obj_attr(object, title, vlaue.value.real);
+	}
+	else if (vlaue.type == UF_ATTR_string)
+	{
+		set_obj_attr(object, title, vlaue.value.string);
+	}
+	return 0;
+}
+
+
+struct UF_MODL_ray_hit_point_info_s
+{
+	double    hit_point[3];
+	int       hit_face;
+};
+
+typedef struct UF_MODL_ray_hit_point_info_s UF_MODL_ray_hit_point_info_t,
+* UF_MODL_ray_hit_point_info_p_t;
+
+//射线
+static int UF_MODL_trace_a_ray(int num_bodies, int* bodys, double pt[3], double dir[3], double trans[16], int num_desired, int* num_results, vector <UF_MODL_ray_hit_point_info_t>& hit_list)
+{
+	szwEntityHandle* shapes;
+	ZwEntityIdTransfer(num_bodies, bodys, shapes);
+	ezwFaceTrim faceTrim = ZW_TRIM_ALL;
+	szwAxis ray;
+	ray.point = { pt[0],  pt[1],  pt[2] };
+	int pttag;
+	ray.direction = { dir[0], dir[1], dir[2] };
+	int infinite = 0;
+	double length = 0.0;
+	int count;
+	szwIntersectionPoint* intersectionPoints;
+	int ret = ZwRayShapeIntersect(num_bodies, shapes, faceTrim, ray, infinite, length, &count, &intersectionPoints);
+
+	if (count > 0)
+	{
+		*num_results = count;
+		for (size_t i = 0; i < count; i++)
+		{
+			int face = hand2id(intersectionPoints[i].faceHandle);
+			UF_MODL_ray_hit_point_info_t hitobj;
+			hitobj.hit_face = face;
+			hitobj.hit_point[0] = intersectionPoints[i].point.x;
+			hitobj.hit_point[1] = intersectionPoints[i].point.y;
+			hitobj.hit_point[2] = intersectionPoints[i].point.z;
+			hit_list.push_back(hitobj);
+		}
+		ZwMemoryFree((void**)&intersectionPoints);
+		ZwEntityHandleListFree(num_bodies, &shapes);
+	}
+	return  ret;
+}
+
+//射线
+static int UF_MODL_trace_a_ray(int num_bodies, szwEntityHandle* shapes, double pt[3], double dir[3], vector <UF_MODL_ray_hit_point_info_t>& hit_list)
+{
+	ezwFaceTrim faceTrim = ZW_TRIM_ALL;
+	szwAxis ray;
+	ray.point = { pt[0],  pt[1],  pt[2] };
+	int pttag;
+	ray.direction = { dir[0], dir[1], dir[2] };
+	int infinite = 0;
+	double length = 0.0;
+	int count;
+	szwIntersectionPoint* intersectionPoints;
+	int ret = ZwRayShapeIntersect(num_bodies, shapes, faceTrim, ray, infinite, length, &count, &intersectionPoints);
+
+	if (count > 0)
+	{
+		for (size_t i = 0; i < count; i++)
+		{
+			int face = hand2id(intersectionPoints[i].faceHandle);
+			UF_MODL_ray_hit_point_info_t hitobj;
+			hitobj.hit_face = face;
+			hitobj.hit_point[0] = intersectionPoints[i].point.x;
+			hitobj.hit_point[1] = intersectionPoints[i].point.y;
+			hitobj.hit_point[2] = intersectionPoints[i].point.z;
+			hit_list.push_back(hitobj);
+		}
+		ZwMemoryFree((void**)&intersectionPoints);
+		ZwEntityHandleListFree(num_bodies, &shapes);
+	}
+	return  ret;
+}
+
+//射线
+static int UF_MODL_trace_a_ray(int num_bodies, int* bodys, double pt[3], double dir[3], vector <UF_MODL_ray_hit_point_info_t>& hit_list)
+{
+	szwEntityHandle* shapes;
+	ZwEntityIdTransfer(num_bodies, bodys, shapes);
+	int ret = UF_MODL_trace_a_ray(num_bodies, shapes, pt, dir, hit_list);
+	return  ret;
+}
+
+//按方向矩阵查包围框
+static int UF_MODL_ask_bounding_box_exact(int idShape, int csys_id, double  min_corner[3], double  directions[3][3], double  distances[3])
+{
+	svxCSYSData csys_data;
+	cvxCSYSGetData(csys_id, &csys_data);
+	svxMatrix matrix = csys_data.Frame;
+	svxVector vec[6];
+	UF_MTX3_x_vec(matrix, vec[0]);
+	UF_MTX3_y_vec(matrix, vec[1]);
+	UF_MTX3_z_vec(matrix, vec[2]);
+	for (size_t i = 3; i < 6; i++)
+	{
+		vec[i] = vec[i - 3];
+		cvxVecReverse(&vec[i]);
+	}
+	svxMatrix mat;
+	cvxMatInit(&mat);
+	svxPoint boxpt[6];
+	svxPoint boxwcspt[6];
+	for (size_t i = 0; i < 6; i++)
+	{
+		int Count;
+		int* idEnts;
+		svxPoint Point;
+		cvxPartInqShapeExtreme(idShape, &vec[i], &Count, &idEnts, &boxpt[i]);
+		cvxMemFree((void**)&idEnts);
+		UF_CSYS_map_point(mat, boxpt[i], matrix, boxwcspt[i]);
+		//int pttag;
+		//cvxPartPnt(&Point, &pttag);
+	}
+	double minX = boxwcspt[3].x;
+	double minY = boxwcspt[4].y;
+	double minZ = boxwcspt[5].z;
+	double maxX = boxwcspt[0].x;
+	double maxY = boxwcspt[1].y;
+	double maxZ = boxwcspt[2].z;
+
+	distances[0] = maxX - minX;
+	distances[1] = maxY - minY;
+	distances[2] = maxZ - minZ;
+
+	svxPoint minipt = { minX ,minY,minZ }, abspt;
+	UF_CSYS_map_point(matrix, minipt, mat, abspt);
+
+	min_corner[0] = abspt.x;
+	min_corner[1] = abspt.y;
+	min_corner[2] = abspt.z;
+
+	return 0;
+}
+
+//按方向矩阵查包围框
+static int UF_MODL_ask_bounding_box_exact(int idShape, svxMatrix matrix, double  min_corner[3], double  cenpt[3], double  distances[3])
+{
+	svxBndBox box;
+	cvxPartInqEntBox(idShape, &matrix, &box);
+	svxVector vec[6];
+	UF_MTX3_x_vec(matrix, vec[0]);
+	UF_MTX3_y_vec(matrix, vec[1]);
+	UF_MTX3_z_vec(matrix, vec[2]);
+	for (size_t i = 3; i < 6; i++)
+	{
+		vec[i] = vec[i - 3];
+		cvxVecReverse(&vec[i]);
+	}
+	svxMatrix mat;
+	cvxMatInit(&mat);
+	svxPoint boxpt[6];
+	svxPoint boxwcspt[6];
+	for (size_t i = 0; i < 6; i++)
+	{
+		int Count;
+		int* idEnts;
+		svxPoint Point;
+		cvxPartInqShapeExtreme(idShape, &vec[i], &Count, &idEnts, &boxpt[i]);
+		cvxMemFree((void**)&idEnts);
+		UF_CSYS_map_point(mat, boxpt[i], matrix, boxwcspt[i]);
+		//int pttag;
+		//cvxPartPnt(&Point, &pttag);
+	}
+	double minX = boxwcspt[3].x;
+	double minY = boxwcspt[4].y;
+	double minZ = boxwcspt[5].z;
+	double maxX = boxwcspt[0].x;
+	double maxY = boxwcspt[1].y;
+	double maxZ = boxwcspt[2].z;
+
+	distances[0] = maxX - minX;
+	distances[1] = maxY - minY;
+	distances[2] = maxZ - minZ;
+
+	svxPoint minipt = { minX ,minY,minZ }, abspt;
+	UF_CSYS_map_point(matrix, minipt, mat, abspt);
+
+	min_corner[0] = abspt.x;
+	min_corner[1] = abspt.y;
+	min_corner[2] = abspt.z;
+
+	svxPoint wcscenpt = { minX + distances[0] / 2 ,minY + distances[1] / 2,minZ + distances[2] / 2 };
+	UF_CSYS_map_point(matrix, wcscenpt, mat, abspt);
+
+	cenpt[0] = abspt.x;
+	cenpt[1] = abspt.y;
+	cenpt[2] = abspt.z;
+
+	return 0;
+}
+
+
+//查包围框
+static int UF_MODL_ask_bounding_box(int idShape, double bounding_box[6])
+{
+	svxBndBox Box1 = { 0 };
+	int ret = cvxEntBndBox(idShape, &Box1);
+	bounding_box[0] = Box1.X.min;
+	bounding_box[1] = Box1.Y.min;
+	bounding_box[2] = Box1.Z.min;
+
+	bounding_box[3] = Box1.X.max;
+	bounding_box[4] = Box1.Y.max;
+	bounding_box[5] = Box1.Z.max;
+	return ret;
+}
+
+//边倒圆角
+static int UF_MODL_create_edge_blend(int obj, double rad)
+{
+	int ret=cvxPartFillet(1, &obj, rad);
+	return ret;
+}
+
+//多条边倒圆角
+static int UF_MODL_create_edge_blend(int count ,int *objs, double rad)
+{
+	int ret = cvxPartFillet(count, objs, rad);
+	return ret;
+}
+//边倒圆角
+static int  UF_MODL_create_blend(int obj, double rad)
+{
+	int ret = cvxPartFillet(1, &obj, rad);
+	return ret;
+}
+//边倒圆角
+static int  UF_MODL_create_blend1(int obj, double rad)
+{
+	int ret = cvxPartFillet(1, &obj, rad);
+	return ret;
+}
+
+//倒斜角
+static int UF_MODL_create_chamfer(int subtype, char* offset1, char* offset2, char* theta, vector <int> edges, tag_t* feature_obj_id)
+{
+	int ret = 1;
+	double ang = atof(theta);
+	if (fabs(ang-45)<0.01 && subtype==1)
+	{
+		double  chamfer_size = atof(offset1);
+		ret=cvxPartChamConst(edges.size(), edges.data(), chamfer_size);
+	}
+	return ret;
+}
+
+//查询透明度
+static int UF_OBJ_ask_translucency(int face, int *value)
+{
+	svxFaceAt At;
+	int ret = cvxPartInqFaceAt(face, &At);
+	*value = At.trans;
+	return ret;
+}
+
+//设置透明度
+static int UF_OBJ_set_translucency(int face, int value)
+{
+	int ret = cvxEntTransSet(value, 1, &face);
+	return ret;
+}
+
+static int UF_MODL_unite_bodies(int target, int tool)
+{
+	int ret = cvxPartBool(VX_BOOL_ADD, target, 1, &tool, 0);
+	return ret;
+}
+
+static int UF_MODL_subtract_bodies(int  target, int  tool, int* num_result, int** resulting_bodies)
+{
+	int opstart = cvxOpCount();
+	int ret = cvxPartBool(VX_BOOL_REMOVE, target, 1, &tool, 0);
+	cvxEntNewAll(opstart, VX_ENT_SHAPE, num_result, resulting_bodies);
+	if (*num_result == 0)
+	{
+		*resulting_bodies[0] = target;
+	}
+	return ret;
+}
+
+static int UF_MODL_intersect_bodies(int  target, int  tool, int* num_result, int** resulting_bodies)
+{
+	int opstart = cvxOpCount();
+	int ret = cvxPartBool(VX_BOOL_INTERSECT, target, 1, &tool, 0);
+	cvxEntNewAll(opstart, VX_ENT_SHAPE, num_result, resulting_bodies);
+	if (*num_result==0)
+	{
+		*resulting_bodies[0] = target;
+	}
+	return ret;
+}
+
+static int UF_MODL_unite_bodies_with_retained_options(int target, int tool, logical retain_target_body, logical  retain_tool_body, int* frec_eid)
+{
+	int keep = 0;
+	if (retain_tool_body)
+	{
+		keep = 1;
+	}
+	int Count, Count1;
+	int* Feats1, * Feats;
+	cvxPartInqShapeFtrs(target, 0, &Count, &Feats);
+	int ret = cvxPartBool(VX_BOOL_ADD, target, 1, &tool, keep);
+	cvxPartInqShapeFtrs(target, 0, &Count1, &Feats1);	if (Count1 > Count)
+	{
+		for (size_t i = 0; i < Count1; i++)
+		{
+			bool isnewfeat = true;
+			for (size_t n = 0; n < Count; n++)
+			{
+				if (Feats1[i] == Feats[n])
+				{
+					isnewfeat = false;
+					break;
+				}
+			}
+			if (isnewfeat)
+			{
+				*frec_eid = Feats1[i];
+				break;
+			}
+		}
+	}
+	return ret;
+}
+
+static int UF_MODL_subtract_bodies_with_retained_options(int target,int tool, logical retain_target_body,logical  retain_tool_body, int* frec_eid)
+{
+	int keep = 0;
+	if (retain_tool_body)
+	{
+		keep = 1;
+	}
+	int Count, Count1;
+	int* Feats1, * Feats;
+	cvxPartInqShapeFtrs(target, 0, &Count, &Feats);
+	int ret = cvxPartBool(VX_BOOL_REMOVE, target, 1, &tool, keep);
+	cvxPartInqShapeFtrs(target, 0, &Count1, &Feats1);
+	if (Count1 > Count)
+	{
+		for (size_t i = 0; i < Count1; i++)
+		{
+			bool isnewfeat = true;
+			for (size_t n = 0; n < Count; n++)
+			{
+				if (Feats1[i] == Feats[n])
+				{
+					isnewfeat = false;
+					break;
+				}
+			}
+			if (isnewfeat)
+			{
+				*frec_eid = Feats1[i];
+				break;
+			}
+		}
+	}
+	return ret;
+}
+
+static int UF_MODL_intersect_bodies_with_retained_options(int target, int tool, logical retain_target_body, logical  retain_tool_body, int* frec_eid)
+{
+	int keep = 0;
+	if (retain_tool_body)
+	{
+		keep = 1;
+	}
+	int Count, Count1;
+	int* Feats1,*Feats;
+	cvxPartInqShapeFtrs(target, 0, &Count,&Feats);
+	int ret = cvxPartBool(VX_BOOL_INTERSECT, target, 1, &tool, keep);
+	cvxPartInqShapeFtrs(target, 0, &Count1, &Feats1);
+	if (Count1 > Count)
+	{
+		for (size_t i = 0; i < Count1; i++)
+		{
+			bool isnewfeat = true;
+			for (size_t n = 0; n < Count; n++)
+			{
+				if (Feats1[i] == Feats[n])
+				{
+					isnewfeat = false;
+					break;
+				}
+			}
+			if (isnewfeat)
+			{
+				*frec_eid = Feats1[i];
+				break;
+			}
+		}
+	}
+	return ret;
+}
+
+
+static int UF_MODL_ask_point_containment(double pt[3],int target, int* pt_status)
+{
+	svxPoint Pnt = { pt[0],pt[1], pt[2] };
+	*pt_status = cvxPntIsOn(&Pnt, target);
+	return *pt_status;
+}
